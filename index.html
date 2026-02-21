@@ -1,29 +1,60 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
-    <link rel="stylesheet" href="app.css">
-   
-   
-   
-   
-</head>
-<body>
-    <h1>Chat Application</h1>
-    <div id="box">
-        <div id="child1">this is left</div>
-        <div id="child2">this is right</div>
-       <div id="child3"></div>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Socket Group Chat</title>
+    <link rel="stylesheet" href="app.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <h1>ChatHub</h1>
+          <p>Real-time group chat</p>
+        </div>
+
+        <form id="create-group-form" class="create-group-form">
+          <label for="group-name">Create a group</label>
+          <div class="inline-input">
+            <input id="group-name" type="text" placeholder="e.g. project-alpha" maxlength="30" required />
+            <button type="submit">Create</button>
+          </div>
+        </form>
+
+        <section>
+          <h2>Groups</h2>
+          <ul id="group-list" class="group-list"></ul>
+        </section>
+      </aside>
+
+      <main class="chat-panel">
+        <header class="chat-header">
+          <div>
+            <h2 id="active-group">Select a group</h2>
+            <p id="group-meta">Join or create a group to start chatting.</p>
+          </div>
+        </header>
+
+        <section id="messages" class="messages"></section>
+
+        <form id="message-form" class="message-form">
+          <input id="message-input" type="text" placeholder="Type your message..." autocomplete="off" required />
+          <button type="submit">Send</button>
+        </form>
+      </main>
     </div>
-<div id="divas">mohith</div>
-    <form action="#" id="form">
-        <label>msg</label>
-        <input type="text"id="message"/>
-        <input type="submit" id="submit">
-    </form></div>
-   
-    <script  src="app1.js"></script>
-</body>
+
+    <dialog id="username-dialog" class="username-dialog">
+      <form method="dialog" id="username-form">
+        <h3>Welcome to ChatHub</h3>
+        <p>Pick a username to start chatting.</p>
+        <input id="username-input" type="text" minlength="2" maxlength="20" required autofocus />
+        <button type="submit">Enter Chat</button>
+      </form>
+    </dialog>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="app.js"></script>
+  </body>
 </html>
