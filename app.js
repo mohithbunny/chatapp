@@ -15,62 +15,12 @@ const usernameInput = document.getElementById('username-input');
 let username = '';
 let currentGroup = '';
 const groups = [];
-const messageNodes = new Map();
 
 function formatTime(isoDate) {
   return new Date(isoDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-function buildReadReceipt(message) {
-  if (!message.readBy || message.user !== username) {
-    return '';
-  }
-
-  const readers = Object.entries(message.readBy)
-    .filter(([reader]) => reader !== username)
-    .sort((a, b) => new Date(a[1]) - new Date(b[1]));
-
-  if (readers.length === 0) {
-    return 'Delivered';
-  }
-
-  const readText = readers.map(([reader, time]) => `${reader} • ${formatTime(time)}`).join(', ');
-  return `Read by: ${readText}`;
-}
-
-function updateMessageReceipt(message) {
-  if (!message?.id || !messageNodes.has(message.id)) {
-    return;
-  }
-
-  const receiptNode = messageNodes.get(message.id).querySelector('.receipt');
-  if (!receiptNode) {
-    return;
-  }
-
-  receiptNode.textContent = buildReadReceipt(message);
-}
-
-function notifySeen(message) {
-  if (!message?.id || message.type !== 'chat') {
-    return;
-  }
-
-  if (message.user === username || !currentGroup) {
-    return;
-  }
-
-  socket.emit('message-seen', { groupName: currentGroup, messageId: message.id });
-}
-
-function appendMessage(message) {
-  const { id, user, text, timestamp, type } = message;
-
-  if (id && messageNodes.has(id)) {
-    updateMessageReceipt(message);
-    return;
-  }
-
+function appendMessage({ user, text, timestamp, type }) {
   const messageElement = document.createElement('article');
   messageElement.className = `message ${type === 'system' ? 'system' : ''}`;
 
@@ -87,21 +37,10 @@ function appendMessage(message) {
         <time>${formatTime(timestamp)}</time>
       </div>
       <div>${text}</div>
-      <div class="receipt"></div>
     `;
-
-    messageElement.dataset.messageId = id;
-    updateMessageReceipt(message);
   }
 
   messagesContainer.appendChild(messageElement);
-
-  if (id) {
-    messageNodes.set(id, messageElement);
-  }
-
-  notifySeen(message);
-
   messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
 
@@ -124,7 +63,6 @@ function renderGroups() {
       }
 
       messagesContainer.innerHTML = '';
-      messageNodes.clear();
       socket.emit('join-group', { groupName }, (response) => {
         if (response.ok) {
           currentGroup = groupName;
@@ -209,36 +147,11 @@ socket.on('group-message', (payload) => {
   }
 });
 
-socket.on('message-read', ({ messageId, readBy }) => {
-  const node = messageNodes.get(messageId);
-  if (!node) {
-    return;
-  }
-
-  const receiptNode = node.querySelector('.receipt');
-  if (!receiptNode) {
-    return;
-  }
-
-  const virtualMessage = {
-    id: messageId,
-    user: node.classList.contains('self') ? username : '',
-    readBy,
-  };
-
-  if (!node.classList.contains('self')) {
-    return;
-  }
-
-  receiptNode.textContent = buildReadReceipt(virtualMessage);
-});
-
 socket.on('joined-group', ({ groupName, history }) => {
   currentGroup = groupName;
   activeGroupLabel.textContent = `# ${groupName}`;
   groupMeta.textContent = `You are chatting as ${username}`;
   messagesContainer.innerHTML = '';
-  messageNodes.clear();
   history.forEach(appendMessage);
   renderGroups();
 });

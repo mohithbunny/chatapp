@@ -166,17 +166,6 @@ button:hover {
   border: 1px dashed rgba(148, 163, 184, 0.35);
 }
 
-
-.receipt {
-  margin-top: 0.35rem;
-  font-size: 0.72rem;
-  color: rgba(226, 232, 240, 0.82);
-}
-
-.message:not(.self) .receipt {
-  display: none;
-}
-
 .message .meta {
   display: flex;
   justify-content: space-between;

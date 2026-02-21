@@ -2,16 +2,6 @@ const path = require('path');
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const {
-  addChatMessage,
-  addSystemMessage,
-  addUser,
-  createGroup,
-  getGroupHistory,
-  listGroups,
-  markMessageRead,
-  sanitizeGroupName,
-} = require('./db');
 
 const app = express();
 const server = http.createServer(app);
@@ -19,38 +9,39 @@ const io = new Server(server);
 
 const PORT = process.env.PORT || 3000;
 const DEFAULT_GROUP = 'general';
+
+const groups = new Map([[DEFAULT_GROUP, []]]);
 const users = new Map();
 
 app.use(express.static(path.join(__dirname)));
 
-function broadcastGroups() {
-  io.emit('groups', { allGroups: listGroups() });
+function systemMessage(text) {
+  return {
+    type: 'system',
+    text,
+    timestamp: new Date().toISOString(),
+  };
 }
 
-function joinGroup(socket, groupName, username) {
-  for (const room of socket.rooms) {
-    if (room !== socket.id) {
-      socket.leave(room);
-    }
-  }
+function chatMessage(user, text) {
+  return {
+    type: 'chat',
+    user,
+    text,
+    timestamp: new Date().toISOString(),
+  };
+}
 
-  socket.join(groupName);
-  socket.data.currentGroup = groupName;
+function sanitizeGroupName(name) {
+  return String(name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]/g, '')
+    .slice(0, 30);
+}
 
-  addSystemMessage(groupName, `${username} joined #${groupName}`);
-
-  const history = getGroupHistory(groupName);
-
-  for (const message of history) {
-    if (message.type === 'chat' && message.user !== username) {
-      const receipt = markMessageRead(groupName, message.id, username);
-      if (receipt) {
-        io.to(groupName).emit('message-read', receipt);
-      }
-    }
-  }
-
-  return getGroupHistory(groupName);
+function broadcastGroups() {
+  io.emit('groups', { allGroups: Array.from(groups.keys()) });
 }
 
 io.on('connection', (socket) => {
@@ -63,34 +54,39 @@ io.on('connection', (socket) => {
     }
 
     users.set(socket.id, cleanUsername);
-    addUser(cleanUsername);
     callback({ ok: true });
 
-    const history = joinGroup(socket, DEFAULT_GROUP, cleanUsername);
+    socket.join(DEFAULT_GROUP);
+    groups.get(DEFAULT_GROUP).push(systemMessage(`${cleanUsername} joined #${DEFAULT_GROUP}`));
 
     socket.emit('joined-group', {
       groupName: DEFAULT_GROUP,
-      history,
+      history: groups.get(DEFAULT_GROUP),
     });
 
     io.to(DEFAULT_GROUP).emit('group-message', {
       groupName: DEFAULT_GROUP,
-      message: addSystemMessage(DEFAULT_GROUP, `${cleanUsername} entered the room.`),
+      message: systemMessage(`${cleanUsername} entered the room.`),
     });
 
     broadcastGroups();
   });
 
   socket.on('create-group', ({ groupName }, callback) => {
-    const result = createGroup(groupName);
+    const cleanGroup = sanitizeGroupName(groupName);
 
-    if (!result.ok) {
-      callback(result);
+    if (!cleanGroup) {
+      callback({ ok: false, error: 'Invalid group name.' });
       return;
     }
 
+    if (!groups.has(cleanGroup)) {
+      groups.set(cleanGroup, [systemMessage(`Group #${cleanGroup} created.`)]);
+      broadcastGroups();
+    }
+
+    socket.emit('groups', { allGroups: Array.from(groups.keys()) });
     callback({ ok: true });
-    broadcastGroups();
   });
 
   socket.on('join-group', ({ groupName }, callback) => {
@@ -102,16 +98,24 @@ io.on('connection', (socket) => {
       return;
     }
 
-    if (!listGroups().includes(cleanGroup)) {
+    if (!groups.has(cleanGroup)) {
       callback({ ok: false, error: 'Group not found.' });
       return;
     }
 
-    const history = joinGroup(socket, cleanGroup, username);
+    for (const room of socket.rooms) {
+      if (room !== socket.id) {
+        socket.leave(room);
+      }
+    }
+
+    socket.join(cleanGroup);
+    const history = groups.get(cleanGroup);
+    history.push(systemMessage(`${username} joined #${cleanGroup}`));
 
     io.to(cleanGroup).emit('group-message', {
       groupName: cleanGroup,
-      message: addSystemMessage(cleanGroup, `${username} joined the group.`),
+      message: systemMessage(`${username} joined the group.`),
     });
 
     callback({ ok: true, history });
@@ -121,37 +125,25 @@ io.on('connection', (socket) => {
     const cleanGroup = sanitizeGroupName(groupName);
     const username = users.get(socket.id);
 
-    if (!username || !listGroups().includes(cleanGroup)) {
+    if (!username || !groups.has(cleanGroup)) {
       return;
     }
 
-    const message = addChatMessage(cleanGroup, username, text);
-    if (!message) {
+    const message = chatMessage(username, String(text || '').trim().slice(0, 500));
+
+    if (!message.text) {
       return;
     }
 
+    groups.get(cleanGroup).push(message);
     io.to(cleanGroup).emit('group-message', { groupName: cleanGroup, message });
-  });
-
-  socket.on('message-seen', ({ groupName, messageId }) => {
-    const cleanGroup = sanitizeGroupName(groupName);
-    const username = users.get(socket.id);
-
-    if (!username || !listGroups().includes(cleanGroup)) {
-      return;
-    }
-
-    const receipt = markMessageRead(cleanGroup, messageId, username);
-    if (receipt) {
-      io.to(cleanGroup).emit('message-read', receipt);
-    }
   });
 
   socket.on('disconnect', () => {
     users.delete(socket.id);
   });
 
-  socket.emit('groups', { allGroups: listGroups() });
+  socket.emit('groups', { allGroups: Array.from(groups.keys()) });
 });
 
 server.listen(PORT, () => {
